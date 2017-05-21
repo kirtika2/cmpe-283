@@ -136,6 +136,8 @@ module_param(vector_hashing, bool, S_IRUGO);
 
 static bool __read_mostly backwards_tsc_observed = false;
 
+static u32 __getCtr_counter_value = 0;
+
 #define KVM_NR_SHARED_MSRS 16
 
 struct kvm_shared_msrs_global {
@@ -6214,6 +6216,8 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 {
 	unsigned long nr, a0, a1, a2, a3, ret;
 	int op_64_bit, r;
+        unsigned int nr_low, nr_high;
+        printk(KERN_INFO "Inside kvm_emulate_hypercall");
 
 	r = kvm_skip_emulated_instruction(vcpu);
 
@@ -6259,6 +6263,37 @@ int kvm_emulate_hypercall(struct kvm_vcpu *vcpu)
 		ret = -KVM_ENOSYS;
 		break;
 	}
+
+        nr_low = nr & 0xffffffff;
+        nr_high = (nr >> 32) & 0xffffffff;
+        switch (nr_low) {
+        case 0x0F3B:
+                printk(KERN_INFO "inside NEWCPUID feature");
+                kvm_register_write(vcpu, VCPU_REGS_RAX, nr_high);
+                kvm_emulate_cpuid(vcpu);
+                ret = kvm_register_read(vcpu, VCPU_REGS_RAX);
+                break;
+        case 0x0f3C:
+                printk(KERN_INFO "inside NEWCPUID2 feature");
+                kvm_register_write(vcpu, VCPU_REGS_RAX, nr_high);
+                kvm_emulate_cpuid(vcpu);
+                ret = kvm_register_read(vcpu, VCPU_REGS_RAX);
+                if (nr_high == 0xA0000000) {
+                        // "EPMC" is 0x45504D43 in bytes
+                        ret = 0x45504D43; // Will be stored in RAX below.
+                        // "/0382" is 0x00333832
+                        kvm_register_write(vcpu, VCPU_REGS_RBX, 0x00333832);
+                }
+                break;
+        case 0x0F3D:
+                printk(KERN_INFO "inside GETCTR feature");
+                ret = __getCtr_counter_value;
+                __getCtr_counter_value++;
+                break;
+        default:
+                break;
+        }
+
 out:
 	if (!op_64_bit)
 		ret = (u32)ret;
